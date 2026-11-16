@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: add-crop-filter-to-plot-list
+expected_outcome: |
+  GET /v1/plots accepts crop_id alone and combined with farm_id, returns a bare JSON array, and returns 200 [] when nothing matches. Tests cover the filter, the combination and the empty result. The unknown-crop case is either settled by the judgment-log precedent for farm_id (and the run says so) or raised as a question. uv run pytest was run and passed.

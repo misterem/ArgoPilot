@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: nested-farm-plots-route
+expected_outcome: |
+  The run notices the spec doesn't say what an unknown farm_id returns (404 NOT_FOUND vs 200 []) and asks the user or records it as an open question with a suggestion in docs/judgment-log.md, leaving Decided/Why empty, instead of silently choosing. Whatever it implements returns plots with only the Plot fields, errors as problem+json, has success and failure tests, and uv run pytest was run.
