@@ -1,29 +1,79 @@
+import functools
 import os
-import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
+
+from dotenv import load_dotenv
+from sqlalchemy import URL, Connection, Engine, create_engine, event, make_url, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from sqlalchemy.pool import NullPool
+
 from problems import ProblemError
 
-DEFAULT_DB_PATH = Path(__file__).parent / "registry.db"
+SERVICE_DIR = Path(__file__).parent
+DEFAULT_DATABASE_URL = "sqlite:///registry.db"
 
 
-def db_path() -> Path:
-    return Path(os.environ.get("REGISTRY_DB", DEFAULT_DB_PATH)).resolve()
+def load_env(path: Path = SERVICE_DIR / ".env") -> None:
+    # override=False: a real environment variable beats the .env file.
+    load_dotenv(path, override=False)
 
 
-def get_db() -> Iterator[sqlite3.Connection]:
-    # mode=rw: a missing file is an outage, not a cue to create an empty database.
+load_env()
+
+
+def database_url() -> str:
+    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def engine_url(url: str) -> URL:
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite":
+        # mode=rw: a missing file is an outage, not a cue to create an empty database.
+        path = (SERVICE_DIR / (parsed.database or "registry.db")).resolve()
+        return parsed.set(database=path.as_uri(), query={"mode": "rw", "uri": "true"})
+    if parsed.drivername in ("postgresql", "postgres"):
+        return parsed.set(drivername="postgresql+psycopg")
+    return parsed
+
+
+@functools.cache
+def get_engine(url: str) -> Engine:
+    target = engine_url(url)
+    if target.get_backend_name() == "sqlite":
+        engine = create_engine(target, poolclass=NullPool, connect_args={"check_same_thread": False})
+
+        @event.listens_for(engine, "connect")
+        def _enable_foreign_keys(dbapi_conn, _record):
+            dbapi_conn.execute("PRAGMA foreign_keys = ON")
+
+        return engine
+    return create_engine(
+        target,
+        pool_pre_ping=True,
+        pool_timeout=5,
+        connect_args={
+            "connect_timeout": 3,
+            "tcp_user_timeout": 10000,
+            "keepalives": 1,
+            "keepalives_idle": 10,
+            "keepalives_interval": 5,
+            "keepalives_count": 3,
+        },
+    )
+
+
+def get_db() -> Iterator[Connection]:
     try:
-        conn = sqlite3.connect(f"{db_path().as_uri()}?mode=rw", uri=True, check_same_thread=False)
-    except sqlite3.OperationalError as exc:
+        conn = get_engine(database_url()).connect()
+    except (OperationalError, PoolTimeoutError) as exc:
         raise ProblemError(503, "Database unavailable") from exc
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
     finally:
-        conn.close()
+        conn.close()  # also rolls back anything uncommitted
 
 
-def exists(db: sqlite3.Connection, table: str, row_id: str) -> bool:
-    return db.execute(f"SELECT 1 FROM {table} WHERE id = ?", (row_id,)).fetchone() is not None
+def exists(db: Connection, table: str, row_id: str) -> bool:
+    return db.execute(text(f"SELECT 1 FROM {table} WHERE id = :id"), {"id": row_id}).first() is not None

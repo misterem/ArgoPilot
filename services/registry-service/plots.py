@@ -1,14 +1,16 @@
-import sqlite3
 from typing import Annotated, Any
 from uuid import uuid4
 from fastapi import APIRouter, Depends, Response
+from sqlalchemy import Connection, text
+from sqlalchemy.exc import IntegrityError
 from db import exists, get_db
+from db_errors import is_unique_violation
 from models import Plot, PlotIn, PlotPatch
 from problems import ProblemError
 
 router = APIRouter(prefix="/v1/plots", tags=["plots"])
 
-Db = Annotated[sqlite3.Connection, Depends(get_db)]
+Db = Annotated[Connection, Depends(get_db)]
 
 COLUMNS = list(Plot.model_fields)
 SELECT = f"SELECT {', '.join(COLUMNS)} FROM plots"
@@ -22,25 +24,26 @@ REFERENCES = {
 }
 
 
-def _get_plot(db: sqlite3.Connection, plot_id: str) -> dict:
-    row = db.execute(f"{SELECT} WHERE id = ?", (plot_id,)).fetchone()
+def _get_plot(db: Connection, plot_id: str) -> dict:
+    row = db.execute(text(f"{SELECT} WHERE id = :id"), {"id": plot_id}).mappings().first()
     if row is None:
         raise ProblemError(404, f"Plot {plot_id} not found")
     return dict(row)
 
 
-def _check_references(db: sqlite3.Connection, fields: dict[str, Any]) -> None:
+def _check_references(db: Connection, fields: dict[str, Any]) -> None:
     for field, (table, label) in REFERENCES.items():
         if field in fields and not exists(db, table, fields[field]):
             raise ProblemError(422, f"Unknown {label}")
 
 
-def _write(db: sqlite3.Connection, sql: str, params: dict[str, Any]) -> None:
+def _write(db: Connection, sql: str, params: dict[str, Any]) -> None:
     try:
-        with db:
-            db.execute(sql, params)
-    except sqlite3.IntegrityError as exc:
-        if "UNIQUE" in str(exc):
+        db.execute(text(sql), params)
+        db.commit()
+    except IntegrityError as exc:
+        # Don't reuse the connection after a failed write; closing it rolls back.
+        if is_unique_violation(exc):
             raise ProblemError(409, "A plot with this name already exists on this farm") from exc
         raise
 
@@ -59,11 +62,12 @@ def create_plot(body: PlotIn, db: Db) -> dict:
 
 @router.get("", response_model=list[Plot])
 def list_plots(db: Db, farm_id: str | None = None) -> list[dict]:
+    # Sorted in Python so every backend orders by codepoint, like SQLite's BINARY collation.
     if farm_id is None:
-        rows = db.execute(f"{SELECT} ORDER BY farm_id, name")
-    else:
-        rows = db.execute(f"{SELECT} WHERE farm_id = ? ORDER BY name", (farm_id,))
-    return [dict(row) for row in rows]
+        rows = db.execute(text(SELECT)).mappings()
+        return sorted((dict(row) for row in rows), key=lambda plot: (plot["farm_id"], plot["name"]))
+    rows = db.execute(text(f"{SELECT} WHERE farm_id = :farm_id"), {"farm_id": farm_id}).mappings()
+    return sorted((dict(row) for row in rows), key=lambda plot: plot["name"])
 
 
 @router.get("/{plot_id}", response_model=Plot)
@@ -85,6 +89,6 @@ def update_plot(plot_id: str, body: PlotPatch, db: Db) -> dict:
 @router.delete("/{plot_id}", status_code=204)
 def delete_plot(plot_id: str, db: Db) -> Response:
     _get_plot(db, plot_id)
-    with db:
-        db.execute("DELETE FROM plots WHERE id = ?", (plot_id,))
+    db.execute(text("DELETE FROM plots WHERE id = :id"), {"id": plot_id})
+    db.commit()
     return Response(status_code=204)

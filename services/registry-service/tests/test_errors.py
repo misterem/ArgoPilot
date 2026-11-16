@@ -1,3 +1,5 @@
+import time
+
 from conftest import assert_problem
 
 
@@ -22,7 +24,7 @@ def test_unknown_route_is_not_found(client):
 
 
 def test_missing_database_is_unavailable(client, monkeypatch, tmp_path):
-    monkeypatch.setenv("REGISTRY_DB", str(tmp_path / "missing.db"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / "missing.db"}")
     response = client.get("/v1/farms")
     assert_problem(response, 503, "UNAVAILABLE")
     assert response.headers["retry-after"].isdigit()
@@ -32,7 +34,16 @@ def test_missing_database_is_unavailable(client, monkeypatch, tmp_path):
 def test_broken_database_is_unavailable(client, monkeypatch, tmp_path):
     empty = tmp_path / "empty.db"
     empty.touch()
-    monkeypatch.setenv("REGISTRY_DB", str(empty))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{empty}")
     response = client.get("/v1/plots")
     assert_problem(response, 503, "UNAVAILABLE")
     assert "retry-after" in response.headers
+
+
+def test_unreachable_postgres_is_unavailable_quickly(client, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
+    start = time.monotonic()
+    response = client.get("/v1/farms")
+    assert time.monotonic() - start < 5
+    assert_problem(response, 503, "UNAVAILABLE")
+    assert response.headers["retry-after"].isdigit()
