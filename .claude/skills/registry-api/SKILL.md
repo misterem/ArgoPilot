@@ -31,7 +31,7 @@ Make the body model subclass `models.Patch`: every field optional, explicit `nul
 
 ## 5. Every error is problem+json with a stable `code`
 
-Raise `ProblemError(status, detail)` from `problems.py`. `problems.install(app)` already turns that, `RequestValidationError`, Starlette 404/405 and `sqlite3.OperationalError` into RFC 9457 responses:
+Raise `ProblemError(status, detail)` from `problems.py`. `problems.install(app)` already turns that, `RequestValidationError`, Starlette 404/405 and SQLAlchemy `DBAPIError` (via `db_errors.is_unavailable`) into RFC 9457 responses:
 
 | Status | `code` | Typical cause |
 | --- | --- | --- |
@@ -45,7 +45,7 @@ Raise `ProblemError(status, detail)` from `problems.py`. `problems.install(app)`
 What this means in practice:
 - Never use `fastapi.HTTPException(detail=...)`, return a hand-built `JSONResponse`, or return an error dict. Those produce FastAPI's default `{"detail": ...}` body or bypass the content type. `ProblemError` is the only way to fail.
 - Keep `detail` a short human sentence ("Plot {id} not found"). The `code` is what clients branch on, so don't invent new codes or change existing ones.
-- Field rules (ranges, formats, required) belong in the pydantic models. Rules that need the database (does this crop exist? is this name taken?) belong in the route module. A DB-level constraint becomes a `ProblemError` by catching `sqlite3.IntegrityError` (see `_write` in `plots.py`).
+- Field rules (ranges, formats, required) belong in the pydantic models. Rules that need the database (does this crop exist? is this name taken?) belong in the route module. A DB-level constraint becomes a `ProblemError` by catching `sqlalchemy.exc.IntegrityError` and checking `db_errors.is_unique_violation` (see `_write` in `plots.py`).
 - A body field pointing at a row that doesn't exist is 422 `Unknown <thing>`, not 404, because the URL itself exists (judgment log).
 
 ## 6. Every endpoint gets tests: success and every failure it can return
@@ -58,7 +58,7 @@ Before writing tests, list the outcomes the endpoint can produce, then write at 
 - **422** for each field rule (parametrize: missing, wrong type, out of range, null on PATCH, extra field) and for each unknown reference.
 - **404** for an unknown path id.
 - **409** for each conflict the endpoint can hit.
-- **503** with a missing database (`monkeypatch.setenv("REGISTRY_DB", <missing path>)`) and a `retry-after` header. Every route that touches the DB can return it.
+- **503** with a missing database (`monkeypatch.setenv("DATABASE_URL", f"sqlite:///{missing_path}")`) and a `retry-after` header. Every route that touches the DB can return it.
 - **PATCH**: unsent fields unchanged, and the change persisted (GET it again).
 
 When you change an existing endpoint, update its existing tests too. Don't just add new ones next to stale ones.
