@@ -1,10 +1,55 @@
+import functools
 import os
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
+
+from dotenv import load_dotenv
+from sqlalchemy import URL, Engine, create_engine, event, make_url
+from sqlalchemy.pool import NullPool
+
 from problems import ProblemError
 
-DEFAULT_DB_PATH = Path(__file__).parent / "registry.db"
+SERVICE_DIR = Path(__file__).parent
+DEFAULT_DB_PATH = SERVICE_DIR / "registry.db"
+DEFAULT_DATABASE_URL = "sqlite:///registry.db"
+
+
+def load_env(path: Path = SERVICE_DIR / ".env") -> None:
+    # override=False: a real environment variable beats the .env file.
+    load_dotenv(path, override=False)
+
+
+load_env()
+
+
+def database_url() -> str:
+    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def engine_url(url: str) -> URL:
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite":
+        # mode=rw: a missing file is an outage, not a cue to create an empty database.
+        path = (SERVICE_DIR / (parsed.database or "registry.db")).resolve()
+        return parsed.set(database=f"file:{path}", query={"mode": "rw", "uri": "true"})
+    if parsed.drivername in ("postgresql", "postgres"):
+        return parsed.set(drivername="postgresql+psycopg")
+    return parsed
+
+
+@functools.cache
+def get_engine(url: str) -> Engine:
+    target = engine_url(url)
+    if target.get_backend_name() == "sqlite":
+        engine = create_engine(target, poolclass=NullPool, connect_args={"check_same_thread": False})
+
+        @event.listens_for(engine, "connect")
+        def _enable_foreign_keys(dbapi_conn, _record):
+            dbapi_conn.execute("PRAGMA foreign_keys = ON")
+
+        return engine
+    return create_engine(target, pool_pre_ping=True, connect_args={"connect_timeout": 3})
 
 
 def db_path() -> Path:
