@@ -101,3 +101,11 @@ def test_list_is_codepoint_ordered(client):
     names = [f["name"] for f in client.get("/v1/farms").json()]
     assert names == sorted(names)
     assert names.index("Zebra farm") < names.index("apple farm")
+
+
+def test_area_sum_is_identical_on_every_backend(client, plot_body):
+    farm_id = client.post("/v1/farms", json={"name": "Float Farm"}).json()["id"]
+    for index, area in enumerate((0.1, 0.2, 0.3)):
+        body = {**plot_body, "name": f"p{index}", "farm_id": farm_id, "area_m2": area}
+        assert client.post("/v1/plots", json=body).status_code == 201
+    assert client.get(f"/v1/farms/{farm_id}/area").json() == {"area_m2": 0.6}

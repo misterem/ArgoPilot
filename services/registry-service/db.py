@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import URL, Connection, Engine, create_engine, event, make_url, text
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.pool import NullPool
 
 from problems import ProblemError
@@ -31,7 +32,7 @@ def engine_url(url: str) -> URL:
     if parsed.get_backend_name() == "sqlite":
         # mode=rw: a missing file is an outage, not a cue to create an empty database.
         path = (SERVICE_DIR / (parsed.database or "registry.db")).resolve()
-        return parsed.set(database=f"file:{path}", query={"mode": "rw", "uri": "true"})
+        return parsed.set(database=path.as_uri(), query={"mode": "rw", "uri": "true"})
     if parsed.drivername in ("postgresql", "postgres"):
         return parsed.set(drivername="postgresql+psycopg")
     return parsed
@@ -48,13 +49,25 @@ def get_engine(url: str) -> Engine:
             dbapi_conn.execute("PRAGMA foreign_keys = ON")
 
         return engine
-    return create_engine(target, pool_pre_ping=True, connect_args={"connect_timeout": 3})
+    return create_engine(
+        target,
+        pool_pre_ping=True,
+        pool_timeout=5,
+        connect_args={
+            "connect_timeout": 3,
+            "tcp_user_timeout": 10000,
+            "keepalives": 1,
+            "keepalives_idle": 10,
+            "keepalives_interval": 5,
+            "keepalives_count": 3,
+        },
+    )
 
 
 def get_db() -> Iterator[Connection]:
     try:
         conn = get_engine(database_url()).connect()
-    except OperationalError as exc:
+    except (OperationalError, PoolTimeoutError) as exc:
         raise ProblemError(503, "Database unavailable") from exc
     try:
         yield conn

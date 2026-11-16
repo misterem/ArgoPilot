@@ -1,8 +1,14 @@
+import subprocess
+
+import sqlalchemy.exc
+from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError, ProgrammingError
 
 import db
 import db_errors
 import schema
+from conftest import assert_problem
+from main import app
 
 
 def test_default_url_is_local_sqlite(monkeypatch):
@@ -27,7 +33,7 @@ def test_real_env_beats_env_file(tmp_path, monkeypatch):
 
 def test_relative_sqlite_path_resolves_to_service_dir():
     url = db.engine_url("sqlite:///registry.db")
-    assert url.database == f"file:{db.SERVICE_DIR / 'registry.db'}"
+    assert url.database == (db.SERVICE_DIR / 'registry.db').resolve().as_uri()
     assert url.query == {"mode": "rw", "uri": "true"}
 
 
@@ -63,3 +69,41 @@ def test_is_unique_violation_classification():
     sqlite_style = IntegrityError("stmt", {}, FakeOrig(None, "UNIQUE constraint failed: plots.name"))
     assert db_errors.is_unique_violation(sqlite_style)
     assert not db_errors.is_unique_violation(IntegrityError("stmt", {}, FakeOrig("23503", "fk")))
+
+
+def _seed(path):
+    subprocess.run(["bash", str(db.SERVICE_DIR / "seed_registry.sh"), str(path)], check=True, capture_output=True)
+
+
+def test_sqlite_foreign_keys_are_enforced(tmp_path):
+    path = tmp_path / "fk.db"
+    _seed(path)
+    with db.get_engine(f"sqlite:///{path}").connect() as c:
+        assert c.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+
+
+def test_sqlite_path_with_special_characters(tmp_path, monkeypatch):
+    folder = tmp_path / "a #b"
+    folder.mkdir()
+    path = folder / "registry.db"
+    _seed(path)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path}")
+    with TestClient(app) as c:
+        assert c.get("/v1/farms").status_code == 200
+
+
+class _TimingOutEngine:
+    def connect(self):
+        raise sqlalchemy.exc.TimeoutError("QueuePool limit reached")
+
+
+def test_pool_timeout_gives_503(monkeypatch):
+    monkeypatch.setattr(db, "get_engine", lambda url: _TimingOutEngine())
+    with TestClient(app) as c:
+        response = c.get("/v1/farms")
+    assert_problem(response, 503, "UNAVAILABLE")
+    assert response.headers["retry-after"].isdigit()
+
+
+def test_postgres_engine_pool_timeout():
+    assert db.get_engine("postgresql://u:p@127.0.0.1:1/x").pool.timeout() == 5

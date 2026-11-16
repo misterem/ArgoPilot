@@ -21,7 +21,7 @@ An empty result is a successful query, not an error: `200` with `[]`. That inclu
 
 Response models in `models.py` hold exactly the spec'd fields, and SQL column lists are built from them (`list(Plot.model_fields)`), so the model is the single source of truth. Don't add fields the spec doesn't list: no `created_at`, no `links`, no computed extras, no "helpful" nested objects. Each extra field is a promise to clients that nobody agreed to make.
 
-If the response needs a field that isn't stored yet, the schema lives in `seed_registry.sh` (there are no migrations). Change the script and the matching models together.
+If the response needs a field that isn't stored yet, the schema lives in `schema.sql` (there are no migrations; SQLite loads it via `seed_registry.sh`, Postgres via `scripts/setup_db.py`). Change `schema.sql` and the matching models together.
 
 If the spec doesn't list the fields for a response, ask (rule 8).
 

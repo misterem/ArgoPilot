@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: unique-farm-names
 expected_outcome: |
-  Uniqueness is enforced in the schema (seed_registry.sh) and a duplicate on POST and on PATCH returns 409 CONFLICT as problem+json via ProblemError, not FastAPI's default body. Tests cover the duplicate POST, the duplicate PATCH, renaming a farm to its own name, and the success path. Open questions the spec leaves (case sensitivity, surrounding whitespace) are asked rather than decided silently. uv run pytest was run and passed.
+  Uniqueness is enforced in the schema (schema.sql) and a duplicate on POST and on PATCH returns 409 CONFLICT as problem+json via ProblemError, not FastAPI's default body. Tests cover the duplicate POST, the duplicate PATCH, renaming a farm to its own name, and the success path. Open questions the spec leaves (case sensitivity, surrounding whitespace) are asked rather than decided silently. uv run pytest was run and passed.

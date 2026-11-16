@@ -18,6 +18,8 @@ The database is chosen by `DATABASE_URL`, read from the environment or from a `.
 
 - Default: `sqlite:///registry.db`. A relative SQLite path resolves against this folder. The app never creates the SQLite file; a missing file gives `503`.
 - PostgreSQL: `DATABASE_URL=postgresql://user:password@host:5432/registry` (a bare `postgresql://` URL uses the psycopg driver).
+- Special characters in a PostgreSQL password must be URL-encoded in `DATABASE_URL`.
+- The production database should use UTF8 encoding.
 
 ### PostgreSQL setup
 

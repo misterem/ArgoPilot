@@ -1,3 +1,4 @@
+import math
 from typing import Annotated
 from uuid import uuid4
 from fastapi import APIRouter, Depends, Response
@@ -42,10 +43,9 @@ def get_farm(farm_id: str, db: Db) -> dict:
 @router.get("/{farm_id}/area", response_model=FarmArea)
 def get_farm_area(farm_id: str, db: Db) -> dict:
     _get_farm(db, farm_id)
-    row = db.execute(
-        text("SELECT COALESCE(SUM(area_m2), 0.0) AS area_m2 FROM plots WHERE farm_id = :id"), {"id": farm_id}
-    ).mappings().one()
-    return dict(row)
+    # Summed in Python: SQLite's SUM is compensated, Postgres's is not, so fsum keeps both identical.
+    areas = db.execute(text("SELECT area_m2 FROM plots WHERE farm_id = :id"), {"id": farm_id}).scalars()
+    return {"area_m2": math.fsum(areas)}
 
 
 @router.patch("/{farm_id}", response_model=Farm)
