@@ -1,12 +1,14 @@
 """RFC 9457 problem+json responses for every error the API returns."""
 
-import sqlite3
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from db_errors import is_unavailable
 
 RETRY_AFTER_SECONDS = 5
 
@@ -66,6 +68,8 @@ def install(app: FastAPI) -> None:
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         return problem(exc.status_code, str(exc.detail), exc.headers)
 
-    @app.exception_handler(sqlite3.OperationalError)
-    async def _db_down(_: Request, __: sqlite3.OperationalError) -> JSONResponse:
-        return problem(503, "Database unavailable")
+    @app.exception_handler(DBAPIError)
+    async def _db_down(_: Request, exc: DBAPIError) -> JSONResponse:
+        if is_unavailable(exc):
+            return problem(503, "Database unavailable")
+        raise exc

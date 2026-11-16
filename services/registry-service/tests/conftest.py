@@ -18,7 +18,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """A client backed by a freshly seeded database in a temp folder."""
     db = tmp_path / "registry.db"
     subprocess.run(["bash", str(SERVICE_DIR / "seed_registry.sh"), str(db)], check=True, capture_output=True)
-    monkeypatch.setenv("REGISTRY_DB", str(db))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db}")
     return TestClient(app)
 
 

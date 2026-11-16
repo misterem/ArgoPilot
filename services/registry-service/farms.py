@@ -1,18 +1,19 @@
-import sqlite3
 from typing import Annotated
 from uuid import uuid4
 from fastapi import APIRouter, Depends, Response
+from sqlalchemy import Connection, text
+from sqlalchemy.exc import IntegrityError
 from db import get_db
 from models import Farm, FarmArea, FarmIn, FarmPatch
 from problems import ProblemError
 
 router = APIRouter(prefix="/v1/farms", tags=["farms"])
 
-Db = Annotated[sqlite3.Connection, Depends(get_db)]
+Db = Annotated[Connection, Depends(get_db)]
 
 
-def _get_farm(db: sqlite3.Connection, farm_id: str) -> dict:
-    row = db.execute("SELECT id, name FROM farms WHERE id = ?", (farm_id,)).fetchone()
+def _get_farm(db: Connection, farm_id: str) -> dict:
+    row = db.execute(text("SELECT id, name FROM farms WHERE id = :id"), {"id": farm_id}).mappings().first()
     if row is None:
         raise ProblemError(404, f"Farm {farm_id} not found")
     return dict(row)
@@ -21,14 +22,16 @@ def _get_farm(db: sqlite3.Connection, farm_id: str) -> dict:
 @router.post("", status_code=201, response_model=Farm)
 def create_farm(body: FarmIn, db: Db) -> dict:
     farm = {"id": str(uuid4()), **body.model_dump()}
-    with db:
-        db.execute("INSERT INTO farms (id, name) VALUES (:id, :name)", farm)
+    db.execute(text("INSERT INTO farms (id, name) VALUES (:id, :name)"), farm)
+    db.commit()
     return farm
 
 
 @router.get("", response_model=list[Farm])
 def list_farms(db: Db) -> list[dict]:
-    return [dict(row) for row in db.execute("SELECT id, name FROM farms ORDER BY name")]
+    # Sorted in Python so every backend orders by codepoint, like SQLite's BINARY collation.
+    rows = db.execute(text("SELECT id, name FROM farms")).mappings()
+    return sorted((dict(row) for row in rows), key=lambda farm: farm["name"])
 
 
 @router.get("/{farm_id}", response_model=Farm)
@@ -39,7 +42,9 @@ def get_farm(farm_id: str, db: Db) -> dict:
 @router.get("/{farm_id}/area", response_model=FarmArea)
 def get_farm_area(farm_id: str, db: Db) -> dict:
     _get_farm(db, farm_id)
-    row = db.execute("SELECT TOTAL(area_m2) AS area_m2 FROM plots WHERE farm_id = ?", (farm_id,)).fetchone()
+    row = db.execute(
+        text("SELECT COALESCE(SUM(area_m2), 0.0) AS area_m2 FROM plots WHERE farm_id = :id"), {"id": farm_id}
+    ).mappings().one()
     return dict(row)
 
 
@@ -49,21 +54,21 @@ def update_farm(farm_id: str, body: FarmPatch, db: Db) -> dict:
     changes = body.changes()
     if changes:
         assignments = ", ".join(f"{column} = :{column}" for column in changes)
-        with db:
-            db.execute(f"UPDATE farms SET {assignments} WHERE id = :id", {**changes, "id": farm_id})
+        db.execute(text(f"UPDATE farms SET {assignments} WHERE id = :id"), {**changes, "id": farm_id})
+        db.commit()
     return {**farm, **changes}
 
 
 @router.delete("/{farm_id}", status_code=204)
 def delete_farm(farm_id: str, db: Db) -> Response:
     _get_farm(db, farm_id)
-    has_plots = db.execute("SELECT 1 FROM plots WHERE farm_id = ? LIMIT 1", (farm_id,)).fetchone()
+    has_plots = db.execute(text("SELECT 1 FROM plots WHERE farm_id = :id LIMIT 1"), {"id": farm_id}).first()
     if has_plots:
         raise ProblemError(409, "Farm still has plots; delete them first")
     try:
-        with db:
-            db.execute("DELETE FROM farms WHERE id = ?", (farm_id,))
-    except sqlite3.IntegrityError as exc:
+        db.execute(text("DELETE FROM farms WHERE id = :id"), {"id": farm_id})
+        db.commit()
+    except IntegrityError as exc:
         # A plot was added between the check and the delete.
         raise ProblemError(409, "Farm still has plots; delete them first") from exc
     return Response(status_code=204)

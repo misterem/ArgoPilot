@@ -1,17 +1,16 @@
 import functools
 import os
-import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import URL, Engine, create_engine, event, make_url
+from sqlalchemy import URL, Connection, Engine, create_engine, event, make_url, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import NullPool
 
 from problems import ProblemError
 
 SERVICE_DIR = Path(__file__).parent
-DEFAULT_DB_PATH = SERVICE_DIR / "registry.db"
 DEFAULT_DATABASE_URL = "sqlite:///registry.db"
 
 
@@ -52,23 +51,16 @@ def get_engine(url: str) -> Engine:
     return create_engine(target, pool_pre_ping=True, connect_args={"connect_timeout": 3})
 
 
-def db_path() -> Path:
-    return Path(os.environ.get("REGISTRY_DB", DEFAULT_DB_PATH)).resolve()
-
-
-def get_db() -> Iterator[sqlite3.Connection]:
-    # mode=rw: a missing file is an outage, not a cue to create an empty database.
+def get_db() -> Iterator[Connection]:
     try:
-        conn = sqlite3.connect(f"{db_path().as_uri()}?mode=rw", uri=True, check_same_thread=False)
-    except sqlite3.OperationalError as exc:
+        conn = get_engine(database_url()).connect()
+    except OperationalError as exc:
         raise ProblemError(503, "Database unavailable") from exc
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
     finally:
-        conn.close()
+        conn.close()  # also rolls back anything uncommitted
 
 
-def exists(db: sqlite3.Connection, table: str, row_id: str) -> bool:
-    return db.execute(f"SELECT 1 FROM {table} WHERE id = ?", (row_id,)).fetchone() is not None
+def exists(db: Connection, table: str, row_id: str) -> bool:
+    return db.execute(text(f"SELECT 1 FROM {table} WHERE id = :id"), {"id": row_id}).first() is not None

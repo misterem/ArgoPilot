@@ -89,7 +89,15 @@ def test_area_of_unknown_farm_is_404(client):
 
 
 def test_area_without_database_is_503(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("REGISTRY_DB", str(tmp_path / "missing.db"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / "missing.db"}")
     response = client.get(f"/v1/farms/{DEMO_FARM}/area")
     assert_problem(response, 503, "UNAVAILABLE")
     assert "retry-after" in response.headers
+
+
+def test_list_is_codepoint_ordered(client):
+    for name in ("apple farm", "Zebra farm"):
+        client.post("/v1/farms", json={"name": name})
+    names = [f["name"] for f in client.get("/v1/farms").json()]
+    assert names == sorted(names)
+    assert names.index("Zebra farm") < names.index("apple farm")
