@@ -1,10 +1,13 @@
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+import db
 from main import app
+from schema import load
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 
@@ -13,12 +16,24 @@ EAST_FARM = "a9c1e4b2-6f70-4d8e-a144-3f8b5c904004"
 NORTH_BLOCK = "c8f3d1b0-4d2e-5a1b-8b22-1d6e3f702002"
 
 
-@pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """A client backed by a freshly seeded database in a temp folder."""
-    db = tmp_path / "registry.db"
-    subprocess.run(["bash", str(SERVICE_DIR / "seed_registry.sh"), str(db)], check=True, capture_output=True)
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db}")
+TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
+BACKENDS = ["sqlite"] + (["postgres"] if TEST_POSTGRES_URL else [])
+requires_postgres = pytest.mark.skipif(not TEST_POSTGRES_URL, reason="set TEST_POSTGRES_URL")
+
+
+@pytest.fixture(params=BACKENDS)
+def client(request, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """A client backed by a freshly seeded database (SQLite in a temp folder, or Postgres)."""
+    if request.param == "postgres":
+        with db.get_engine(db.engine_url(TEST_POSTGRES_URL)).begin() as conn:
+            conn.exec_driver_sql("DROP SCHEMA public CASCADE")
+            conn.exec_driver_sql("CREATE SCHEMA public")
+            load(conn, "schema.sql", "catalogue.sql", "demo.sql")
+        monkeypatch.setenv("DATABASE_URL", TEST_POSTGRES_URL)
+    else:
+        path = tmp_path / "registry.db"
+        subprocess.run(["bash", str(SERVICE_DIR / "seed_registry.sh"), str(path)], check=True, capture_output=True)
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path}")
     return TestClient(app)
 
 
