@@ -1,0 +1,23 @@
+[project]
+name = "weather-service"
+version = "0.1.0"
+description = "AgroPilot weather service: daily ET0 and rain from Open-Meteo, cached per 0.1 degree cell."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi~=0.115.0",
+    "httpx>=0.28",
+    "pydantic-settings~=2.6",
+    "uvicorn~=0.32.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+]
