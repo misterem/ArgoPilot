@@ -5,8 +5,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-# main.py refuses to import without DATABASE_URL; tests that touch the DB set their own.
-os.environ.setdefault("DATABASE_URL", "sqlite:///registry.db")
+# main.py refuses to import without DATABASE_URL. Overwrite (not setdefault) any shell value with a file
+# that never exists, so a test that forgets to set its own URL gets 503, never a real database.
+os.environ["DATABASE_URL"] = "sqlite:///__tests_must_set_DATABASE_URL__.db"
 
 import config  # noqa: E402
 import db  # noqa: E402

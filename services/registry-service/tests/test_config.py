@@ -1,4 +1,6 @@
+import os
 import subprocess
+import sys
 
 import pytest
 
@@ -127,3 +129,18 @@ def test_pool_timeout_gives_503(monkeypatch):
 
 def test_postgres_engine_pool_timeout():
     assert db.get_engine("postgresql://u:p@127.0.0.1:1/x").pool.timeout() == 5
+
+
+def test_tests_never_reach_a_real_database_by_default():
+    # A test that forgets to set DATABASE_URL must hit a missing file (503), never registry.db or a shell-exported DB.
+    with TestClient(app) as c:
+        assert_problem(c.get("/v1/farms"), 503, "UNAVAILABLE")
+
+
+def test_service_exits_at_startup_without_database_url(tmp_path):
+    env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}
+    code = f"import config; config.ENV_FILE = __import__('pathlib').Path({str(tmp_path / 'absent.env')!r}); import main"
+    result = subprocess.run([sys.executable, "-c", code], cwd=db.SERVICE_DIR, env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "registry-service: DATABASE_URL is not set" in result.stderr
+    assert "Traceback" not in result.stderr
