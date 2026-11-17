@@ -24,6 +24,17 @@ The database is chosen by `DATABASE_URL`, read by `config.py` (pydantic-settings
 - Special characters in a PostgreSQL password must be URL-encoded in `DATABASE_URL`.
 - The production database should use UTF8 encoding.
 
+**Switching between SQLite and PostgreSQL** is a configuration change only. Keep both lines in `.env`, with exactly one active, and comment one out to switch:
+
+```
+# Local development:
+DATABASE_URL=sqlite:///registry.db
+# Production (PostgreSQL):
+# DATABASE_URL=postgresql://user:password@localhost:5432/registry
+```
+
+If both lines are active, the last one silently wins, so always comment one out. A `DATABASE_URL` set in the shell overrides both. Tests ignore `.env`: each test builds its own fresh SQLite copy (or uses `TEST_POSTGRES_URL`, see Test).
+
 ### PostgreSQL setup
 
 On a new, empty database, with `DATABASE_URL` pointing at it:
