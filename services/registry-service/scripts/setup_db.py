@@ -1,6 +1,7 @@
-"""One-off setup for a new, empty database: creates the schema and loads the catalogues.
+"""One-off setup for a new, empty database: creates the schema and loads the seed:
+2 crops, 3 soils, 4 emitters, 2 farms, 4 plots (the same 15 rows as seed_registry.sh).
 
-Never loads demo data, and changes nothing if any registry table already exists.
+Changes nothing if any registry table already exists.
 Usage (from services/registry-service): uv run python scripts/setup_db.py
 """
 
@@ -28,8 +29,8 @@ def main(url: str | None = None) -> int:
         if found:
             print(f"Tables already exist: {', '.join(found)}. Nothing changed.", file=sys.stderr)
             return 1
-        load(conn, "schema.sql", "catalogue.sql")
-    print("Created 5 tables and loaded 2 crops, 3 soils, 4 emitters.")
+        load(conn, "schema.sql", "catalogue.sql", "demo.sql")
+    print("Created 5 tables and loaded 15 rows: 2 crops, 3 soils, 4 emitters, 2 farms, 4 plots.")
     return 0
 
 

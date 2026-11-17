@@ -12,14 +12,14 @@ setup_db = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(setup_db)
 
 
-def test_setup_loads_schema_and_catalogue_only(tmp_path):
+def test_setup_loads_the_15_seed_rows(tmp_path):
     path = tmp_path / "new.db"
     path.touch()
     assert setup_db.main(f"sqlite:///{path}") == 0
     with db.get_engine(f"sqlite:///{path}").connect() as conn:
         assert schema.existing_tables(conn) == sorted(schema.TABLES)
-        assert conn.exec_driver_sql("SELECT COUNT(*) FROM emitters").scalar() == 4
-        assert conn.exec_driver_sql("SELECT COUNT(*) FROM farms").scalar() == 0
+        counts = {t: conn.exec_driver_sql(f"SELECT COUNT(*) FROM {t}").scalar() for t in schema.TABLES}
+    assert counts == {"crops": 2, "soils": 3, "emitters": 4, "farms": 2, "plots": 4}
 
 
 def test_setup_refuses_when_tables_exist(tmp_path, capsys):
