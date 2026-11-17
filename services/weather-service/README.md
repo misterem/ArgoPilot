@@ -26,7 +26,7 @@ Read by `config.py` (pydantic-settings) from the environment or `.env` in this f
 | `PROVIDER_RETRIES` | `2` | Retries after the first failed call |
 | `PROVIDER_RETRY_BACKOFF_S` | `0.5` | Wait between attempts, seconds |
 | `FORECAST_FRESH_HOURS` | `3` | How long a forecast is fresh |
-| `FORECAST_MAX_STALE_HOURS` | `24` | Oldest forecast still served as stale |
+| `FORECAST_MAX_STALE_HOURS` | `24` | Oldest forecast still served as stale; at most 24 (see "Too old"), and not less than `FORECAST_FRESH_HOURS` |
 | `RETRY_AFTER_S` | `60` | `Retry-After` header on `503` |
 
 ## What we take from Open-Meteo

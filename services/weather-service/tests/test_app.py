@@ -71,3 +71,16 @@ def test_service_exits_at_startup_without_config(tmp_path):
     assert "weather-service: " in result.stderr
     assert "PROVIDER_BASE_URL" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_max_stale_over_24h_is_invalid(tmp_path, monkeypatch):
+    # forecast_days=8 only covers today + 6 for a forecast up to 24 h old; more would silently 503.
+    monkeypatch.setenv("FORECAST_MAX_STALE_HOURS", "48")
+    with pytest.raises(config.ConfigError, match="FORECAST_MAX_STALE_HOURS is invalid"):
+        config.load_settings(tmp_path / "absent.env")
+
+
+def test_fresh_window_longer_than_stale_limit_is_invalid(tmp_path, monkeypatch):
+    monkeypatch.setenv("FORECAST_FRESH_HOURS", "30")
+    with pytest.raises(config.ConfigError, match="FORECAST_FRESH_HOURS"):
+        config.load_settings(tmp_path / "absent.env")

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -273,3 +274,23 @@ async def test_fresh_hit_does_not_wait_for_inflight_other_cell():
     assert answer.stale is False
     gate.set()
     await blocked
+
+
+@pytestmark_anyio
+async def test_bad_upstream_value_still_falls_back_to_stale():
+    # A response that breaks parsing must count as a failed attempt, so the cell's good forecast is served stale.
+    import httpx
+
+    import provider
+
+    bad = json.dumps({**good_body(), "utc_offset_seconds": 10**12}).encode()
+    responses = [httpx.Response(200, json=good_body())] + [httpx.Response(200, content=bad) for _ in range(3)]
+    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: responses.pop(0)))
+    settings = config.load_settings(None)
+    clock = Clock()
+    f = Forecaster(fetch=lambda la, lo: provider.fetch_daily(http, settings, la, lo), settings=settings, now=clock, sleep=Sleeps())
+    await f.get(31.25, 34.79, 7)
+    clock.advance(hours=4)
+    answer = await f.get(31.25, 34.79, 7)
+    assert answer.stale is True
+    await http.aclose()

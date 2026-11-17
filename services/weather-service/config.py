@@ -6,7 +6,7 @@ Every variable is required; see .env.example.
 import functools
 from pathlib import Path
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVICE_DIR = Path(__file__).parent
@@ -26,8 +26,15 @@ class Settings(BaseSettings):
     provider_retries: int = Field(ge=0)
     provider_retry_backoff_s: float = Field(ge=0)
     forecast_fresh_hours: float = Field(gt=0)
-    forecast_max_stale_hours: float = Field(gt=0)
+    # At most 24: we fetch 8 days, which covers today + 6 only for a forecast up to one local midnight old.
+    forecast_max_stale_hours: float = Field(gt=0, le=24)
     retry_after_s: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _fresh_within_stale(self) -> "Settings":
+        if self.forecast_fresh_hours > self.forecast_max_stale_hours:
+            raise ValueError("FORECAST_FRESH_HOURS must not exceed FORECAST_MAX_STALE_HOURS")
+        return self
 
 
 def load_settings(env_file: Path | None) -> Settings:
@@ -36,6 +43,9 @@ def load_settings(env_file: Path | None) -> Settings:
     except ValidationError as exc:
         missing, invalid = [], []
         for err in exc.errors():
+            if not err["loc"]:  # a rule across fields
+                invalid.append(err["msg"].removeprefix("Value error, "))
+                continue
             name = str(err["loc"][0]).upper()
             if err["type"] == "missing" or (err["type"] == "string_too_short" and err.get("input") == ""):
                 missing.append(name)

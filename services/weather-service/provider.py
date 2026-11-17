@@ -12,6 +12,8 @@ import httpx
 
 from config import Settings
 
+MAX_UTC_OFFSET_SECONDS = 18 * 3600  # the widest real offsets are -12 h / +14 h
+
 # One more than the 7 days the API serves, so a forecast up to 24 h old still covers today + 6 days.
 FETCH_DAYS = 8
 
@@ -64,8 +66,8 @@ def _parse(body: object) -> ProviderForecast:
     if not isinstance(body, dict):
         raise ProviderError("body is not an object")
     offset = body.get("utc_offset_seconds")
-    if not isinstance(offset, int) or isinstance(offset, bool):
-        raise ProviderError("utc_offset_seconds missing or not an integer")
+    if not isinstance(offset, int) or isinstance(offset, bool) or abs(offset) > MAX_UTC_OFFSET_SECONDS:
+        raise ProviderError("utc_offset_seconds missing, not an integer, or out of range")
     daily = body.get("daily")
     if not isinstance(daily, dict):
         raise ProviderError("daily missing")
@@ -95,6 +97,10 @@ def _date(value: object) -> date:
 def _amount(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProviderError(f"not a number: {value!r}")
-    if not math.isfinite(value) or value < 0:
+    try:
+        finite = math.isfinite(value)
+    except OverflowError:  # an int too large for a float
+        finite = False
+    if not finite or value < 0:
         raise ProviderError(f"not a valid amount: {value!r}")
     return float(value)

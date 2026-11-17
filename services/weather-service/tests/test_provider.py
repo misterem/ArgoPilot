@@ -154,3 +154,17 @@ async def test_non_consecutive_dates_is_failure():
     times[4] = "2026-11-30"
     with pytest.raises(provider.ProviderError):
         await fetch(json_handler(body_with(time=times)))
+
+
+async def test_huge_integer_is_failure():
+    content = json.dumps(good_body()).replace('"precipitation_sum": [0.0', '"precipitation_sum": [' + "9" * 400, 1)
+    with pytest.raises(provider.ProviderError):
+        await fetch(lambda request: httpx.Response(200, content=content.encode()))
+
+
+@pytest.mark.parametrize("offset", [10**12, -10**12, 18 * 3600 + 1])
+async def test_absurd_utc_offset_is_failure(offset):
+    body = good_body()
+    body["utc_offset_seconds"] = offset
+    with pytest.raises(provider.ProviderError):
+        await fetch(json_handler(body))
