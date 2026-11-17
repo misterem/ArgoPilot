@@ -10,12 +10,19 @@ from pathlib import Path
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
+from config import ConfigError  # noqa: E402
 from db import database_url, get_engine  # noqa: E402
 from schema import existing_tables, load  # noqa: E402
 
 
 def main(url: str | None = None) -> int:
-    engine = get_engine(url or database_url())
+    if url is None:
+        try:
+            url = database_url()
+        except ConfigError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+    engine = get_engine(url)
     with engine.begin() as conn:
         found = existing_tables(conn)
         if found:

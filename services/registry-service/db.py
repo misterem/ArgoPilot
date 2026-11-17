@@ -1,30 +1,19 @@
 import functools
-import os
 from collections.abc import Iterator
-from pathlib import Path
 
-from dotenv import load_dotenv
 from sqlalchemy import URL, Connection, Engine, create_engine, event, make_url, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.pool import NullPool
 
+import config
 from problems import ProblemError
 
-SERVICE_DIR = Path(__file__).parent
-DEFAULT_DATABASE_URL = "sqlite:///registry.db"
-
-
-def load_env(path: Path = SERVICE_DIR / ".env") -> None:
-    # override=False: a real environment variable beats the .env file.
-    load_dotenv(path, override=False)
-
-
-load_env()
+SERVICE_DIR = config.SERVICE_DIR
 
 
 def database_url() -> str:
-    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    return config.get_settings().database_url
 
 
 def engine_url(url: str) -> URL:

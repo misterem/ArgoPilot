@@ -5,9 +5,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import db
-from main import app
-from schema import load
+# main.py refuses to import without DATABASE_URL; tests that touch the DB set their own.
+os.environ.setdefault("DATABASE_URL", "sqlite:///registry.db")
+
+import config  # noqa: E402
+import db  # noqa: E402
+from main import app  # noqa: E402
+from schema import load  # noqa: E402
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 
@@ -19,6 +23,13 @@ NORTH_BLOCK = "c8f3d1b0-4d2e-5a1b-8b22-1d6e3f702002"
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 BACKENDS = ["sqlite"] + (["postgres"] if TEST_POSTGRES_URL else [])
 requires_postgres = pytest.mark.skipif(not TEST_POSTGRES_URL, reason="set TEST_POSTGRES_URL")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_settings():
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
 
 
 @pytest.fixture(params=BACKENDS)

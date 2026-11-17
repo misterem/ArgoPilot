@@ -1,9 +1,12 @@
 import subprocess
 
+import pytest
+
 import sqlalchemy.exc
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError, ProgrammingError
 
+import config
 import db
 import db_errors
 import schema
@@ -11,24 +14,41 @@ from conftest import assert_problem
 from main import app
 
 
-def test_default_url_is_local_sqlite(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    assert db.database_url() == "sqlite:///registry.db"
-
-
 def test_env_file_is_read(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     (tmp_path / ".env").write_text("DATABASE_URL=sqlite:///from-file.db\n")
-    db.load_env(tmp_path / ".env")
-    assert db.database_url() == "sqlite:///from-file.db"
-    monkeypatch.delenv("DATABASE_URL", raising=False)  # load_env set it outside monkeypatch
+    assert config.load_settings(tmp_path / ".env").database_url == "sqlite:///from-file.db"
 
 
 def test_real_env_beats_env_file(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///from-env.db")
     (tmp_path / ".env").write_text("DATABASE_URL=sqlite:///from-file.db\n")
-    db.load_env(tmp_path / ".env")
-    assert db.database_url() == "sqlite:///from-env.db"
+    assert config.load_settings(tmp_path / ".env").database_url == "sqlite:///from-env.db"
+
+
+def test_missing_url_raises_config_error(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(config.ConfigError, match="DATABASE_URL"):
+        config.load_settings(tmp_path / "absent.env")
+
+
+def test_empty_url_is_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    (tmp_path / ".env").write_text("DATABASE_URL=\n")
+    with pytest.raises(config.ConfigError, match="DATABASE_URL"):
+        config.load_settings(tmp_path / ".env")
+
+
+def test_unknown_env_vars_are_ignored(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    (tmp_path / ".env").write_text("DATABASE_URL=sqlite:///x.db\nWEATHER_URL=http://x\n")
+    assert config.load_settings(tmp_path / ".env").database_url == "sqlite:///x.db"
+
+
+def test_database_url_comes_from_settings(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///via-settings.db")
+    config.get_settings.cache_clear()
+    assert db.database_url() == "sqlite:///via-settings.db"
 
 
 def test_relative_sqlite_path_resolves_to_service_dir():
