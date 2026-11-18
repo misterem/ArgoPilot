@@ -110,7 +110,9 @@ async def get_forecast(http: httpx.AsyncClient, settings: Settings, lat: float, 
 # --- helpers ---
 
 def _segment(value: str) -> str:
-    return quote(value, safe="")  # one path segment: "/", "?", ".." can't reach another route
+    # One path segment: "/" and "?" are encoded by quote(); dots too, or httpx would collapse "." / ".."
+    # and reach another route (e.g. the registry's plot list).
+    return quote(value, safe="").replace(".", "%2E")
 
 
 async def _get_json(http, service, base_url, path, timeout, params=None, not_found=None) -> dict:

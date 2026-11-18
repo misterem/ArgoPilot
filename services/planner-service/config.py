@@ -5,8 +5,9 @@ Every variable is required; see .env.example.
 
 import functools
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVICE_DIR = Path(__file__).parent
@@ -25,6 +26,14 @@ class Settings(BaseSettings):
     registry_timeout_s: float = Field(gt=0)
     # Must exceed weather-service's worst case (~16 s with its example settings).
     weather_timeout_s: float = Field(gt=0)
+
+    @field_validator("registry_url", "weather_url")
+    @classmethod
+    def _http_url(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            raise ValueError("must be an http:// or https:// URL with a host")
+        return value
 
 
 def load_settings(env_file: Path | None) -> Settings:

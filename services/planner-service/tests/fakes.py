@@ -60,10 +60,12 @@ class Upstreams:
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        path = request.url.raw_path.decode().split("?")[0]
+        path = request.url.path  # decoded, as the real services see it (%2E → ".")
         if request.url.host == "registry.test":
             if self.registry_down:
                 raise httpx.ConnectError("refused", request=request)
+            if path == "/v1/plots":  # the registry's list route, as the real service answers it
+                return httpx.Response(200, json=[self.plot])
             if path == f"/v1/plots/{PLOT_ID}":
                 return httpx.Response(200, json=self.plot)
             if path.startswith("/v1/plots/"):

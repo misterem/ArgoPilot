@@ -114,3 +114,9 @@ def test_unknown_crop_is_422(api):
     up.plot = plot_body(crop_id="melon")
     body = assert_problem(client.get(URL), 422, "VALIDATION")
     assert body["detail"] == "No crop parameters for 'melon'"
+
+
+@pytest.mark.parametrize("path", ["/v1/plots/%2E/plan", "/v1/plots/%2E%2E/plan"])
+def test_dot_plot_id_is_404_not_outage(api, path):
+    client, _ = api
+    assert_problem(client.get(path), 404, "NOT_FOUND")

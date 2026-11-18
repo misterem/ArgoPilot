@@ -46,7 +46,7 @@ async def test_plot_id_is_one_encoded_segment():
     up = Upstreams()
     with pytest.raises(clients.PlotNotFound):
         await call(up, clients.get_plot, "../farms?x")
-    assert up.requests[0].url.raw_path == b"/v1/plots/..%2Ffarms%3Fx"
+    assert up.requests[0].url.raw_path == b"/v1/plots/%2E%2E%2Ffarms%3Fx"
 
 
 async def test_registry_500_is_upstream():
@@ -150,3 +150,11 @@ async def test_timeouts_come_from_settings():
     await call(up, clients.get_forecast, 31.25, 34.79, 7)
     assert up.requests[0].extensions["timeout"]["read"] == 5
     assert up.requests[1].extensions["timeout"]["read"] == 20
+
+
+@pytest.mark.parametrize("plot_id, raw", [(".", b"/v1/plots/%2E"), ("..", b"/v1/plots/%2E%2E"), ("a.b", b"/v1/plots/a%2Eb")])
+async def test_dot_ids_stay_one_segment(plot_id, raw):
+    up = Upstreams()
+    with pytest.raises(clients.PlotNotFound):
+        await call(up, clients.get_plot, plot_id)
+    assert up.requests[0].url.raw_path == raw

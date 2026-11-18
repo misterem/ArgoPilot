@@ -62,3 +62,10 @@ def test_service_exits_at_startup_without_config(tmp_path):
     assert "planner-service: " in result.stderr
     assert "REGISTRY_URL" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("value", ["registry:8000", "ftp://registry:8000", "http://"])
+def test_url_without_http_scheme_is_invalid(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("REGISTRY_URL", value)
+    with pytest.raises(config.ConfigError, match="REGISTRY_URL is invalid"):
+        config.load_settings(tmp_path / "absent.env")
