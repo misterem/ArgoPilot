@@ -47,7 +47,7 @@ FAO writes ETo (subscript o). Equation, table and figure numbers are FAO's own.
 **Soil bucket** (Ch. 8):
 - Eq. 82 `TAW = 1000 · (θFC − θWP) · Zr`
 - Eq. 83 `RAW = p · TAW`
-- p adjustment (Ch. 8, Table 22 fn 2): `p = p(Table 22) + 0.04 · (5 − ETc)`, clamp 0.1 ≤ p ≤ 0.8. FAO allows either a constant p or this daily adjustment (**open**, fao56.md §5.3). The choice can flip whether a day is stressed, so always state which one you used.
+- p adjustment (Ch. 8, Table 22 fn 2): `p = p(Table 22) + 0.04 · (5 − ETc)`, clamp 0.1 ≤ p ≤ 0.8. FAO allows either a constant p or this daily adjustment (**open**, fao56.md §5.3 → planner: see [AgroPilot planner method](#agropilot-planner-method): constant p). The choice can flip whether a day is stressed, so always state which one you used.
 - Eq. 84 `Ks = (TAW − Dr) / (TAW − RAW)` when Dr > RAW, else Ks = 1
 - Eq. 81 `ETc adj = Ks · Kc · ETo` (single Kc); Eq. 80 `ETc adj = (Ks · Kcb + Ke) · ETo` (dual Kc)
 
@@ -67,7 +67,7 @@ FAO writes ETo (subscript o). Equation, table and figure numbers are FAO's own.
 1. Morning: subtract any irrigation decided yesterday and today's P − RO from yesterday's ending Dr, floor at 0 → Dr start.
 2. Kc for day i (Eq. 66), ETc = Kc · ETo.
 3. Zr, TAW, p, RAW for the day.
-4. Ks from Eq. 84 (Ex. 38 uses Dr start; Annex 8 uses the first-estimate ending depletion — **open**, fao56.md §4).
+4. Ks from Eq. 84 (Ex. 38 uses Dr start; Annex 8 uses the first-estimate ending depletion — **open**, fao56.md §4 → planner: see [AgroPilot planner method](#agropilot-planner-method): Ks is always 1).
 5. ETc adj, DP (Eq. 88), ending Dr (Eq. 85), clamp (Eq. 86).
 6. If ending Dr ≥ RAW, schedule I = ending Dr for tomorrow morning.
 
@@ -77,7 +77,7 @@ FAO writes ETo (subscript o). Equation, table and figure numbers are FAO's own.
 |---|---|---|---|
 | Kc ini | 0.6 (Solanaceae group row; crop row blank) | 0.6 (group row) | Table 12 |
 | Kc mid | 1.15 (1.20 staked) | 1.05 (1.15 staked) | Table 12, fn 2 |
-| Kc end | 0.70–0.90 (**open**: FAO gives no pick rule) | 0.90 | Table 12 |
+| Kc end | 0.70–0.90 (**open**: FAO gives no pick rule; planner: 0.80) | 0.90 | Table 12 |
 | max h (m) | 0.6 | 0.7 | Table 12 |
 | Zr max (m) | 0.7–1.5 (smaller end for scheduling) | 0.5–1.0 | Table 22 |
 | p (ETc ≈ 5 mm/d) | 0.40 | 0.30 | Table 22 |
@@ -87,7 +87,7 @@ Stage lengths, days (Table 11; FAO urges local data):
 
 | Crop | Ini | Dev | Mid | Late | Total | Planting | Region |
 |---|---|---|---|---|---|---|---|
-| Pepper | 25/30 (**open**) | 35 | 40 | 20 | 125 | April/June | Europe and Medit. |
+| Pepper | 25/30 (**open**; planner: 30) | 35 | 40 | 20 | 125 | April/June | Europe and Medit. |
 | Pepper | 30 | 40 | 110 | 30 | 210 | October | Arid Region |
 | Tomato | 30 | 40 | 40 | 25 | 135 | January | Arid Region |
 | Tomato | 35 | 40 | 50 | 30 | 155 | Apr/May | Calif., USA |
@@ -137,10 +137,50 @@ Day 3 checks: DP = 10 + 40.35 − 6.325 − 40.35 = 3.675 (Eq. 88). Dr end = 40.
 
 ## Common mistakes
 
-- Treating I as the emitter or gross depth. FAO's I is net and field-averaged; efficiency, run-time and wetted-bulb volume are **not in FAO-56** (fao56.md §5.3) — ask before inventing a conversion.
+- Treating I as the emitter or gross depth. FAO's I is net and field-averaged; efficiency, run-time and wetted-bulb volume are **not in FAO-56** (fao56.md §5.3) — ask before inventing a conversion. The planner's conversion (no efficiency factor) was decided by the user; see the AgroPilot planner method.
 - Applying the p adjustment without clamping, or using RHmin as a fraction in Eq. 62.
 - Letting Dr go negative instead of moving the excess into DP.
 - Applying Eq. 65 to a Kc end below 0.45.
 - Using Table 12/22 ranges as single numbers without stating which end was chosen.
-- Assuming the single-Kc method is FAO's recommendation for drip. Table 10 points microirrigation to the dual Kcb + Ke method; single Kc is a simplification (fao56.md §1.2) — **open** design decision.
+- Assuming the single-Kc method is FAO's recommendation for drip. Table 10 points microirrigation to the dual Kcb + Ke method; single Kc is a simplification (fao56.md §1.2) — **open** design decision → planner: see [AgroPilot planner method](#agropilot-planner-method): single Kc, unadjusted.
 - Filling a gap from memory. Items marked **open** here, and those listed in fao56.md §5.3, are decisions for the user.
+
+## AgroPilot planner method
+
+This is exactly what `services/planner-service/engine.py` computes (FR-2.11). Change both together. Decisions marked *(user)* were made by the project owner; the rest follow from them or from FAO.
+
+**Crop values** (`crops.py`; single Kc, Table 12 values unadjusted because weather-service gives no wind or humidity) *(user)*:
+
+| | tomato | bell-pepper |
+|---|---|---|
+| Stages ini/dev/mid/late (Table 11) | 30/40/45/30 = 145 d ("Mediterranean, April/May") | 30/35/40/20 = 125 d ("Europe and Medit.") |
+| Kc ini / mid / end | 0.60 / 1.15 / 0.80 | 0.60 / 1.05 / 0.90 |
+| Zr (constant, Table 22 smaller end) | 0.7 m | 0.5 m |
+| p (constant, Table 22) | 0.40 | 0.30 |
+
+Not modelled: climate adjustment (Eqs. 62/65), dual Kc, drip Kc ini (Figs. 29/30), mulch, staking, root growth, Annex 8's stop at mid-late-season, irrigation efficiency.
+
+**Season.** Day i = days since planting + 1 (planting day is day 1). Last season day = planting + L − 1. If the plan's first day (weather-service's "today") is past the season: refuse, `Season ended on <date> (day L of L); update the planting date.` *(user)* If i < 1: refuse, `Season has not started (planting date <date>).` If the season ends inside the window, the plan stops at the last season day *(user)*.
+
+**Bucket.** TAW = available water (mm/m, the soil's `available_water_mm_per_m`) × Zr. RAW = p × TAW. **This morning Dr = RAW**: the bucket is at the threshold *(user)* (no sensor or history exists; this leans toward not under-watering).
+
+**Each day, in order:**
+1. Kc (Eq. 66); ETc = Kc × ET0.
+2. Effective rain P = rain if rain ≥ 0.2 × ET0, else 0. RO = 0, CR = 0.
+3. Dr start = max(0, Dr previous − P); rain beyond an empty bucket drains.
+4. If Dr start + ETc > RAW (the level "would fall below" the threshold today): **top up to the threshold**, I = Dr start + ETc − RAW, and Dr end = RAW *(user)*. Otherwise I = 0 and Dr end = Dr start + ETc (≤ TAW). Comparisons use a 1e-9 mm tolerance, so landing exactly on RAW is not an irrigation.
+5. Ks is never computed: Dr never exceeds RAW, so Ks = 1 (Eq. 84).
+6. Reported bucket level = TAW − Dr end; `threshold_mm` = TAW − RAW.
+
+**Depth to drip:** litres = I × area (1 mm over 1 m² = 1 L). Emitters = area / (row spacing × emitter spacing); system flow = emitters × emitter flow (L/h). Run minutes = litres / system flow × 60. No efficiency factor *(user, matching the spec example)*. Output rounding is half-up: litres and minutes whole, mm 2 decimals, Kc 3 decimals; all comparisons use full precision. A run over 1440 minutes is reported as computed: the system can't deliver that day's use.
+
+**Worked case (planner oracle).** Tomato on day 100 (Kc 1.15), loam 175 mm/m → TAW 122.5, RAW 49.0, threshold level 73.5. 1000 m², rows 1.5 m, emitters 0.4 m at 1.0 L/h → 1666.67 L/h. Start Dr = 49.
+
+| Day | ET0 | Rain | P | Dr start | ETc | I (mm) | litres | minutes | Dr end | bucket_end_mm |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 6.0 | 0.0 | 0 | 49.00 | 6.90 | 6.90 | 6900 | 248 | 49.00 | 73.50 |
+| 2 | 5.0 | 12.0 | 12.0 | 37.00 | 5.75 | 0 | 0 | 0 | 42.75 | 79.75 |
+| 3 | 6.0 | 0.5 (< 1.2, ignored) | 0 | 42.75 | 6.90 | 0.65 | 650 | 23 | 49.00 | 73.50 |
+
+Day 1 is the P2 brief's example (6900 L, 248 min).
+
