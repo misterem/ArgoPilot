@@ -38,11 +38,11 @@ export default async function FarmsPage() {
                 {farmPlots.map((plot) => (
                   <li key={plot.id}>
                     <Link
-                      href={`/plots/${plot.id}`}
+                      href={`/plots/${encodeURIComponent(plot.id)}`}
                       className="flex items-baseline justify-between gap-3 rounded-md bg-surface px-4 py-3 text-base hover:bg-white/70"
                     >
-                      <span className="font-bold">{plot.name}</span>
-                      <span className="text-right text-sm text-muted">
+                      <span className="min-w-0 font-bold">{plot.name}</span>
+                      <span className="shrink-0 text-right text-sm text-muted">
                         {cropName.get(plot.crop_id) ?? plot.crop_id}, {formatLitres(plot.area_m2)} m²
                       </span>
                     </Link>

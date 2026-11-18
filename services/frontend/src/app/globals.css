@@ -106,6 +106,10 @@
   }
 }
 @layer base {
+  /* Names come from the registry and can be one long word: break it rather than overflow 375 px (NFR-2.8). */
+  body {
+    overflow-wrap: anywhere;
+  }
   :focus-visible {
     outline: 3px solid var(--color-water);
     outline-offset: 2px;

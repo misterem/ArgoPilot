@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPlan } from "./planner";
 
-const PLAN = { plot_id: "p", days: [] };
+const PLAN = { plot_id: "p", days: [{ date: "2026-11-18" }] };
 
 function stubFetch(impl: (url: string) => Promise<Response>) {
   const fn = vi.fn(impl);
@@ -53,11 +53,20 @@ describe("getPlan", () => {
     expect(await getPlan("p")).toEqual({ ok: false, error: { kind: "unavailable" } });
   });
 
-  it("ids stay one path segment, dots included", async () => {
+  it("ids stay one path segment", async () => {
     const fetch = stubFetch(async () => Response.json(PLAN));
     await getPlan("../x?y");
-    await getPlan(".");
-    expect(fetch.mock.calls[0][0]).toBe("http://planner.test/v1/plots/%2E%2E%2Fx%3Fy/plan?days=7");
-    expect(fetch.mock.calls[1][0]).toBe("http://planner.test/v1/plots/%2E/plan?days=7");
+    expect(fetch.mock.calls[0][0]).toBe("http://planner.test/v1/plots/..%2Fx%3Fy/plan?days=7");
+  });
+
+  it.each([".", "..", ""])("id %j is not_found without calling the planner (URL parsing would collapse it)", async (id) => {
+    const fetch = stubFetch(async () => Response.json(PLAN));
+    expect(await getPlan(id)).toEqual({ ok: false, error: { kind: "not_found" } });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { days: [] }, { days: "x" }, []])("a 200 without plan days is unavailable: %j", async (body) => {
+    stubFetch(async () => Response.json(body));
+    expect(await getPlan("p")).toEqual({ ok: false, error: { kind: "unavailable" } });
   });
 });
