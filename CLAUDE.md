@@ -11,6 +11,8 @@ AgroPilot helps growers manage crops. Services live under `services/`, each its 
 
 ## Commands
 
+Whole stack, from the repo root: `uv run start.py` (setup + all four services, Ctrl+C stops all; PyCharm run configuration "Start AgroPilot"). It never overwrites `.env` files and never creates tables in PostgreSQL. Per-service commands below.
+
 ### registry-service
 
 Run from `services/registry-service` (uv project, `package = false`):
