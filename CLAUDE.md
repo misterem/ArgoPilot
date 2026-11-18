@@ -6,6 +6,7 @@ AgroPilot helps growers manage crops. Services live under `services/`, each its 
 
 - `registry-service` (port 8000; FastAPI + SQLAlchemy Core on SQLite or PostgreSQL): farms, plots, and read-only crop/soil/emitter catalogues.
 - `weather-service` (port 8001; async FastAPI + httpx): daily ET0 and rain from Open-Meteo, cached in memory per 0.1° grid cell.
+- `planner-service` (port 8002; async FastAPI + httpx): a day-by-day drip plan per plot from registry + weather, computed by a pure FAO-56 engine.
 
 ## Commands
 
@@ -39,6 +40,17 @@ uv run pytest                             # no network: provider faked with http
 uv run python scripts/measure_latency.py --base-url http://127.0.0.1:8001 --seconds 60   # NFR-2.3, warms cache first
 ```
 
+### planner-service
+
+Run from `services/planner-service` (needs registry on 8000 and weather on 8001 to serve plans):
+
+```bash
+uv sync
+cp .env.example .env                      # REGISTRY_URL, WEATHER_URL, REGISTRY_TIMEOUT_S, WEATHER_TIMEOUT_S (> ~16 s)
+uv run uvicorn main:app --host 127.0.0.1 --port 8002
+uv run pytest                             # no network: upstreams faked in tests/fakes.py
+```
+
 There is no linter or formatter configured.
 
 ## Architecture (registry-service)
@@ -59,6 +71,14 @@ There is no linter or formatter configured.
 - **`forecast.py` holds every rule**: `cell_of` floors to 0.1° via `Decimal(repr(x))` (90/180 fold into the last cell); the provider is asked for the cell centre; `Forecaster.get` serves fresh entries without locking, otherwise runs or joins the cell's single in-flight cycle (1 + `PROVIDER_RETRIES` attempts), then answers fresh, stale (≤ `FORECAST_MAX_STALE_HOURS`, still covering local today…today+days−1), or raises `Unavailable` → 503. No memory of failures (user's choice: closest to FR-2.6).
 - **`main.py`**: lifespan owns one `httpx.AsyncClient` and the `Forecaster` on `app.state`; routes get it through the `get_forecaster` dependency, which tests override.
 - **Tests:** `tests/conftest.py` overwrites all 8 env vars before importing `main`; `tests/fakes.py` has `good_body()` (8 days from 2026-11-17, offset +7200) and MockTransport helpers; forecast tests inject a fake fetch, clock and sleep.
+
+## Architecture (planner-service)
+
+- **`engine.py` is the only source of numbers** (pure functions, no I/O): `make_plan(crop, field, weather_days)` → `Plan`. It implements the "AgroPilot planner method" section of `.claude/skills/irrigation-calc-reference/SKILL.md`; change both together, and keep `tests/test_engine.py`'s oracles (the brief's 6900 L / 248 min, the 248/0/23 worked case) passing. Comparisons use `TOLERANCE_MM = 1e-9`.
+- **`crops.py`** holds the FAO crop table keyed by registry `crop_id`; an unknown crop is a 422.
+- **`clients.py`** validates every upstream field and raises `UpstreamUnavailable(service, reason, retry_after)` or `PlotNotFound`; ids are percent-encoded as one path segment. Nothing is defaulted.
+- **`main.py`** order: `days` validation → plot (404) → soil, emitter, forecast in parallel (registry errors named before weather) → crop/season 422 → plan. 503s use `code="UPSTREAM_UNAVAILABLE"` via `ProblemError(..., code=)`. "Today" is weather-service's first date; the planner never reads its own clock.
+- **Tests:** conftest overwrites the 4 env vars before importing `main`; route tests override `main.get_http` with a `MockTransport` client routed by host (`registry.test`, `weather.test`).
 
 ## Project constraints
 
