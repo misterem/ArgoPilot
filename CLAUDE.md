@@ -7,6 +7,7 @@ AgroPilot helps growers manage crops. Services live under `services/`, each its 
 - `registry-service` (port 8000; FastAPI + SQLAlchemy Core on SQLite or PostgreSQL): farms, plots, and read-only crop/soil/emitter catalogues.
 - `weather-service` (port 8001; async FastAPI + httpx): daily ET0 and rain from Open-Meteo, cached in memory per 0.1° grid cell.
 - `planner-service` (port 8002; async FastAPI + httpx): a day-by-day drip plan per plot from registry + weather, computed by a pure FAO-56 engine.
+- `frontend` (port 3000; Next.js 16 App Router, TypeScript, Tailwind, shadcn/ui): farms list and per-plot plan page for growers on phones.
 
 ## Commands
 
@@ -51,7 +52,19 @@ uv run uvicorn main:app --host 127.0.0.1 --port 8002
 uv run pytest                             # no network: upstreams faked in tests/fakes.py
 ```
 
-There is no linter or formatter configured.
+### frontend
+
+Run from `services/frontend` (needs the three services running to show data):
+
+```bash
+npm install
+cp .env.example .env.local                # REGISTRY_URL, WEATHER_URL, PLANNER_URL
+npm run dev                               # http://localhost:3000
+npm test                                  # Vitest: src/lib/*.test.ts
+npm run lint && npm run build
+```
+
+The Python services have no linter or formatter configured; the frontend uses ESLint.
 
 ## Architecture (registry-service)
 
@@ -79,6 +92,14 @@ There is no linter or formatter configured.
 - **`clients.py`** validates every upstream field and raises `UpstreamUnavailable(service, reason, retry_after)` or `PlotNotFound`; ids are percent-encoded as one path segment. Nothing is defaulted.
 - **`main.py`** order: `days` validation → plot (404) → soil, emitter, forecast in parallel (registry errors named before weather) → crop/season 422 → plan. 503s use `code="UPSTREAM_UNAVAILABLE"` via `ProblemError(..., code=)`. "Today" is weather-service's first date; the planner never reads its own clock.
 - **Tests:** conftest overwrites the 4 env vars before importing `main`; route tests override `main.get_http` with a `MockTransport` client routed by host (`registry.test`, `weather.test`).
+
+## Architecture (frontend)
+
+- **Read `services/frontend/AGENTS.md` first**: Next.js 16 differs from older versions; the docs are in `node_modules/next/dist/docs/`. Cache Components is on: no `force-dynamic`; request-time fetches sit under `loading.tsx` / `<Suspense>`, and components call `await connection()` before reading env or the clock.
+- **The browser never calls a service.** Server components fetch through `src/lib/` (`registry.ts`, `planner.ts`, `health.ts` over `fetch-json.ts`: no-store, `AbortSignal.timeout`, failures returned as `Result` values, ids encoded as one path segment with dots as `%2E`).
+- **Copy and display rules live in `src/lib/format.ts` and `src/lib/plan.ts`** (durations, dates as plain local dates, error titles per planner answer, gauge fractions, bar heights) and are pinned by Vitest tests; change the test with the rule.
+- `WeekBars` is the only stateful client component (selected day); it receives the plan as props.
+- Tokens (colours, Atkinson Hyperlegible Next) in `src/app/globals.css`; no dark theme by design.
 
 ## Project constraints
 
