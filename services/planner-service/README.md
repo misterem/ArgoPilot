@@ -95,36 +95,50 @@ Errors are `application/problem+json` (RFC 9457) with a `code`:
 
 Never a plan of zeros: if any input is missing, the answer is an error, not a guess.
 
+### The flow in pictures
+
+Normal request:
+
 ```mermaid
 sequenceDiagram
-    participant F as frontend
+    autonumber
+    participant F as Frontend
     participant P as planner-service
     participant R as registry-service
     participant W as weather-service
-    F->>P: GET /v1/plots/{id}/plan?days=7
-    P->>R: GET /v1/plots/{id}
-    alt plot unknown
-        R-->>P: 404
-        P-->>F: 404 NOT_FOUND
-    else registry down or too slow
-        P-->>F: 503 UPSTREAM_UNAVAILABLE "registry-service unavailable"
-    else plot found
-        par
-            P->>R: GET /v1/soils/{soil_id}
-            P->>R: GET /v1/emitters/{emitter_id}
-            P->>W: GET /v1/forecast?lat&lon&days
-        end
-        alt registry fails (named first)
-            P-->>F: 503 UPSTREAM_UNAVAILABLE "registry-service unavailable"
-        else weather fails or answers incompletely
-            P-->>F: 503 UPSTREAM_UNAVAILABLE "weather-service unavailable" (+ Retry-After)
-        else season over / crop unknown
-            P-->>F: 422 VALIDATION
-        else
-            P-->>F: 200 plan (stale rows if weather was stale)
-        end
+    F->>P: Plan for plot {id}
+    P->>R: Plot details
+    par at the same time
+        P->>R: Soil
+        P->>R: Emitter
+        P->>W: Forecast for the plot's lat, lon
     end
+    Note over P: engine.py works out each day
+    P-->>F: Plan
 ```
+
+What can come back:
+
+```mermaid
+flowchart TD
+    A([Request]) --> B{Registry knows<br/>the plot?}
+    B -- no such plot --> NF[404 NOT_FOUND]
+    B -- no answer --> RD[503, registry-service<br/>unavailable]
+    B -- yes --> C{Soil, emitter and<br/>forecast all answered?}
+    C -- registry didn't --> RD
+    C -- weather didn't --> WD[503, weather-service<br/>unavailable]
+    C -- yes --> D{Crop known and<br/>season running?}
+    D -- no --> V[422 VALIDATION]
+    D -- yes --> OK[200, the plan]
+    class OK ok
+    class NF,V warn
+    class RD,WD err
+    classDef ok fill:#e3f4ea,stroke:#2e8b57,color:#18211f
+    classDef warn fill:#fff4d6,stroke:#e0a100,color:#18211f
+    classDef err fill:#fbe3e0,stroke:#c0392b,color:#18211f
+```
+
+A plan built on a stale forecast is still a `200`, with `stale: true` on every affected day.
 
 ## Code layout
 

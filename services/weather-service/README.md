@@ -68,27 +68,40 @@ At most one provider call cycle (attempt + retries) runs per cell at a time. A r
 
 Failures are not remembered (closest reading of FR-2.6): once a cycle has finished, the next request that finds no fresh forecast calls the provider again, with full retries.
 
+### The flow in pictures
+
+Normal request, when the cached forecast is too old:
+
 ```mermaid
 sequenceDiagram
+    autonumber
     participant C as Caller
     participant W as weather-service
-    participant P as Open-Meteo
-    C->>W: GET /v1/forecast?lat&lon&days
-    alt fresh forecast for the cell covers the days
-        W-->>C: 200, stale: false (no provider call)
-    else not fresh
-        loop up to 3 attempts (1 + 2 retries), 0.5 s apart
-            W->>P: GET /v1/forecast (cell centre, 8 days)
-            P-->>W: forecast, or timeout / error / bad body
-        end
-        alt an attempt succeeded
-            W-->>C: 200, stale: false (cache replaced)
-        else all failed, last forecast ≤ 24 h old and covers the days
-            W-->>C: 200, stale: true, original fetched_at
-        else all failed, nothing usable
-            W-->>C: 503 UNAVAILABLE, Retry-After: 60
-        end
-    end
+    participant O as Open-Meteo
+    C->>W: Forecast for lat, lon, days
+    W->>O: 8-day forecast for the cell centre
+    O-->>W: Forecast
+    W-->>C: Forecast (stale: false)
+```
+
+How the answer is chosen:
+
+```mermaid
+flowchart TD
+    A([Request]) --> B{Cell forecast<br/>under 3 h old?}
+    B -- yes --> F[200, from memory]
+    B -- no --> C[Ask Open-Meteo<br/>up to 3 tries]
+    C --> D{Complete<br/>answer?}
+    D -- yes --> N[200, new forecast<br/>kept for 3 h]
+    D -- no --> E{Last forecast<br/>under 24 h old?}
+    E -- yes --> S[200, stale: true]
+    E -- no --> X[503, Retry-After: 60]
+    class F,N ok
+    class S warn
+    class X err
+    classDef ok fill:#e3f4ea,stroke:#2e8b57,color:#18211f
+    classDef warn fill:#fff4d6,stroke:#e0a100,color:#18211f
+    classDef err fill:#fbe3e0,stroke:#c0392b,color:#18211f
 ```
 
 ## API
