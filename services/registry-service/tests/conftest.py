@@ -4,10 +4,16 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
-import db
-from main import app
-from schema import load
+# main.py refuses to import without DATABASE_URL. Overwrite (not setdefault) any shell value with a file
+# that never exists, so a test that forgets to set its own URL gets 503, never a real database.
+os.environ["DATABASE_URL"] = "sqlite:///__tests_must_set_DATABASE_URL__.db"
+
+import config  # noqa: E402
+import db  # noqa: E402
+from main import app  # noqa: E402
+from schema import load  # noqa: E402
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 
@@ -19,6 +25,13 @@ NORTH_BLOCK = "c8f3d1b0-4d2e-5a1b-8b22-1d6e3f702002"
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 BACKENDS = ["sqlite"] + (["postgres"] if TEST_POSTGRES_URL else [])
 requires_postgres = pytest.mark.skipif(not TEST_POSTGRES_URL, reason="set TEST_POSTGRES_URL")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_settings():
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
 
 
 @pytest.fixture(params=BACKENDS)
@@ -63,3 +76,39 @@ def assert_problem(response, status: int, code: str) -> dict:
     assert body["code"] == code
     assert body["title"] and body["detail"]
     return body
+
+
+class _RacingConnection:
+    """A real connection that lets another writer commit `race` just before the first statement starting with `before`."""
+
+    def __init__(self, conn, before: str, race: str, params: dict):
+        self._conn, self._before, self._race, self._params = conn, before, race, params
+        self._raced = False
+
+    def execute(self, statement, *args, **kwargs):
+        if not self._raced and str(statement).lstrip().startswith(self._before):
+            self._raced = True
+            with db.get_engine(db.database_url()).begin() as other:
+                other.execute(text(self._race), self._params)
+        return self._conn.execute(statement, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+@pytest.fixture
+def race(client):
+    """race(before, sql, params): another client commits `sql` right before the route runs a statement starting with `before`."""
+
+    def install(before: str, sql: str, params: dict) -> None:
+        def racing_db():
+            real = db.get_db()
+            try:
+                yield _RacingConnection(next(real), before, sql, params)
+            finally:
+                real.close()
+
+        app.dependency_overrides[db.get_db] = racing_db
+
+    yield install
+    app.dependency_overrides.pop(db.get_db, None)

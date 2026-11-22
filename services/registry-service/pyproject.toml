@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "AgroPilot registry service."
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi~=0.115.0",
+    "fastapi~=0.165.0",
     "psycopg[binary]~=3.2",
     "pydantic>=2.14.2",
-    "python-dotenv~=1.0",
+    "pydantic-settings~=2.6",
     "sqlalchemy~=2.0",
     "uvicorn~=0.32.0",
 ]
@@ -19,8 +19,20 @@ package = false
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+omit = ["tests/*"]
+# Also measure the tests that start the service or a script in a child process.
+patch = ["subprocess"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 100

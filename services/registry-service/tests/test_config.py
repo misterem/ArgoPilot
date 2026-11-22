@@ -1,9 +1,14 @@
+import os
 import subprocess
+import sys
+
+import pytest
 
 import sqlalchemy.exc
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError, ProgrammingError
 
+import config
 import db
 import db_errors
 import schema
@@ -11,24 +16,41 @@ from conftest import assert_problem
 from main import app
 
 
-def test_default_url_is_local_sqlite(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    assert db.database_url() == "sqlite:///registry.db"
-
-
 def test_env_file_is_read(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     (tmp_path / ".env").write_text("DATABASE_URL=sqlite:///from-file.db\n")
-    db.load_env(tmp_path / ".env")
-    assert db.database_url() == "sqlite:///from-file.db"
-    monkeypatch.delenv("DATABASE_URL", raising=False)  # load_env set it outside monkeypatch
+    assert config.load_settings(tmp_path / ".env").database_url == "sqlite:///from-file.db"
 
 
 def test_real_env_beats_env_file(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///from-env.db")
     (tmp_path / ".env").write_text("DATABASE_URL=sqlite:///from-file.db\n")
-    db.load_env(tmp_path / ".env")
-    assert db.database_url() == "sqlite:///from-env.db"
+    assert config.load_settings(tmp_path / ".env").database_url == "sqlite:///from-env.db"
+
+
+def test_missing_url_raises_config_error(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(config.ConfigError, match="DATABASE_URL"):
+        config.load_settings(tmp_path / "absent.env")
+
+
+def test_empty_url_is_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    (tmp_path / ".env").write_text("DATABASE_URL=\n")
+    with pytest.raises(config.ConfigError, match="DATABASE_URL"):
+        config.load_settings(tmp_path / ".env")
+
+
+def test_unknown_env_vars_are_ignored(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    (tmp_path / ".env").write_text("DATABASE_URL=sqlite:///x.db\nWEATHER_URL=http://x\n")
+    assert config.load_settings(tmp_path / ".env").database_url == "sqlite:///x.db"
+
+
+def test_database_url_comes_from_settings(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///via-settings.db")
+    config.get_settings.cache_clear()
+    assert db.database_url() == "sqlite:///via-settings.db"
 
 
 def test_relative_sqlite_path_resolves_to_service_dir():
@@ -107,3 +129,23 @@ def test_pool_timeout_gives_503(monkeypatch):
 
 def test_postgres_engine_pool_timeout():
     assert db.get_engine("postgresql://u:p@127.0.0.1:1/x").pool.timeout() == 5
+
+
+def test_tests_never_reach_a_real_database_by_default():
+    # A test that forgets to set DATABASE_URL must hit a missing file (503), never registry.db or a shell-exported DB.
+    with TestClient(app) as c:
+        assert_problem(c.get("/v1/farms"), 503, "UNAVAILABLE")
+
+
+def test_service_exits_at_startup_without_database_url(tmp_path):
+    env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}
+    code = f"import config; config.ENV_FILE = __import__('pathlib').Path({str(tmp_path / 'absent.env')!r}); import main"
+    result = subprocess.run([sys.executable, "-c", code], cwd=db.SERVICE_DIR, env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "registry-service: DATABASE_URL is not set" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_driver_qualified_url_is_left_alone():
+    url = "postgresql+psycopg://u:p@h:5432/d"
+    assert db.engine_url(url).render_as_string(hide_password=False) == url

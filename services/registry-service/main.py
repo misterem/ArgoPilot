@@ -1,8 +1,18 @@
+import sys
+
 from fastapi import FastAPI
-import catalogue
-import farms
-import plots
-import problems
+
+import config
+
+try:
+    config.get_settings()
+except config.ConfigError as exc:
+    sys.exit(f"registry-service: {exc}")
+
+import catalogue  # noqa: E402
+import farms  # noqa: E402
+import plots  # noqa: E402
+import problems  # noqa: E402
 
 app = FastAPI(title="AgroPilot registry-service", version="0.1.0")
 problems.install(app)
