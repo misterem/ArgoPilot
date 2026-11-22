@@ -1,4 +1,6 @@
 import importlib.util
+import os
+import sys
 import subprocess
 
 from conftest import SERVICE_DIR
@@ -35,3 +37,14 @@ def test_setup_without_config_exits_cleanly(tmp_path, monkeypatch, capsys):
     config.get_settings.cache_clear()
     assert setup_db.main() == 2
     assert "DATABASE_URL is not set" in capsys.readouterr().err
+
+
+def test_setup_runs_as_a_script(tmp_path):
+    path = tmp_path / "seeded.db"
+    subprocess.run(["bash", str(SERVICE_DIR / "seed_registry.sh"), str(path)], check=True, capture_output=True)
+    env = {**os.environ, "DATABASE_URL": f"sqlite:///{path}"}
+    result = subprocess.run(
+        [sys.executable, "scripts/setup_db.py"], cwd=SERVICE_DIR, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 1
+    assert "Nothing changed" in result.stderr

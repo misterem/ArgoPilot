@@ -144,3 +144,8 @@ def test_service_exits_at_startup_without_database_url(tmp_path):
     assert result.returncode != 0
     assert "registry-service: DATABASE_URL is not set" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_driver_qualified_url_is_left_alone():
+    url = "postgresql+psycopg://u:p@h:5432/d"
+    assert db.engine_url(url).render_as_string(hide_password=False) == url

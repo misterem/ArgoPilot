@@ -3,7 +3,10 @@ from uuid import UUID
 
 import pytest
 
+from fastapi.testclient import TestClient
+
 from conftest import DEMO_FARM, EAST_FARM, NORTH_BLOCK, assert_problem
+from main import app
 
 PLOT_FIELDS = {
     "id", "farm_id", "name", "area_m2", "crop_id", "planting_date", "soil_id",
@@ -133,3 +136,20 @@ def test_same_name_on_another_farm_is_allowed(client, plot_body):
 def test_unknown_plot_is_404(client):
     assert_problem(client.get("/v1/plots/nope"), 404, "NOT_FOUND")
     assert_problem(client.patch("/v1/plots/nope", json={"name": "x"}), 404, "NOT_FOUND")
+
+
+def test_empty_patch_returns_plot_unchanged(client):
+    before = client.get(f"/v1/plots/{NORTH_BLOCK}").json()
+    response = client.patch(f"/v1/plots/{NORTH_BLOCK}", json={})
+    assert response.status_code == 200
+    assert response.json() == before
+    assert client.get(f"/v1/plots/{NORTH_BLOCK}").json() == before
+
+
+def test_farm_deleted_during_create_is_not_reported_as_duplicate(client, race, plot_body):
+    # A non-unique integrity error (here a foreign key) is not a 409 duplicate: it surfaces as a server error.
+    farm = client.post("/v1/farms", json={"name": "Vanishing farm"}).json()
+    race("INSERT INTO plots", "DELETE FROM farms WHERE id = :id", {"id": farm["id"]})
+    response = TestClient(app, raise_server_exceptions=False).post("/v1/plots", json={**plot_body, "farm_id": farm["id"]})
+    assert response.status_code == 500
+    assert client.get(f"/v1/plots?farm_id={farm['id']}").json() == []

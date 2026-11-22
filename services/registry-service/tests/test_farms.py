@@ -109,3 +109,13 @@ def test_area_sum_is_identical_on_every_backend(client, plot_body):
         body = {**plot_body, "name": f"p{index}", "farm_id": farm_id, "area_m2": area}
         assert client.post("/v1/plots", json=body).status_code == 201
     assert client.get(f"/v1/farms/{farm_id}/area").json() == {"area_m2": 0.6}
+
+
+def test_delete_farm_loses_race_to_new_plot_is_conflict(client, race, plot_body):
+    farm = client.post("/v1/farms", json={"name": "Racing farm"}).json()
+    plot = {**plot_body, "id": "race-plot", "farm_id": farm["id"]}
+    columns = ", ".join(plot)
+    race("DELETE FROM farms", f"INSERT INTO plots ({columns}) VALUES ({', '.join(':' + c for c in plot)})", plot)
+    body = assert_problem(client.delete(f"/v1/farms/{farm['id']}"), 409, "CONFLICT")
+    assert body["detail"] == "Farm still has plots; delete them first"
+    assert client.get(f"/v1/farms/{farm['id']}").status_code == 200

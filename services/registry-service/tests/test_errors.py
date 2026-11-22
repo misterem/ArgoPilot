@@ -1,5 +1,6 @@
 import time
 
+import problems
 from conftest import assert_problem
 
 
@@ -47,3 +48,14 @@ def test_unreachable_postgres_is_unavailable_quickly(client, monkeypatch):
     assert time.monotonic() - start < 5
     assert_problem(response, 503, "UNAVAILABLE")
     assert response.headers["retry-after"].isdigit()
+
+
+def test_health(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_describe_keeps_locations_outside_the_request():
+    assert problems._describe([{"loc": (), "msg": "Bad input"}]) == "Bad input"
+    assert problems._describe([{"loc": ("header", "x-id"), "msg": "Field required"}]) == "header.x-id: Field required"
