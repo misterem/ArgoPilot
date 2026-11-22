@@ -1,0 +1,25 @@
+name: deploy-registry
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy registry-service
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          # Deploy this run's commit, not the tip of main, so "Re-run all jobs" on an old green run rolls back.
+          script: |
+            set -e
+            cd /home/ubuntu/ArgoPilot
+            git fetch origin main
+            git reset --hard ${{ github.sha }}
+            cd services/registry-service
+            /home/ubuntu/.local/bin/uv sync --locked
+            sudo systemctl restart registry.service
