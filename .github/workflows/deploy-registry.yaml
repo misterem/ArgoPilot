@@ -23,3 +23,11 @@ jobs:
             cd services/registry-service
             /home/ubuntu/.local/bin/uv sync --locked
             sudo systemctl restart registry.service
+            # restart returns before the app is up: wait up to 30 s for /health, else show the log and fail.
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8000/health; then echo; echo "registry-service is healthy"; exit 0; fi
+              sleep 1
+            done
+            echo "registry-service did not become healthy within 30 s" >&2
+            sudo journalctl -u registry.service -n 30 --no-pager >&2
+            exit 1
