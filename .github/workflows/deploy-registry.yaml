@@ -21,7 +21,7 @@ jobs:
             git fetch origin main
             git reset --hard ${{ github.sha }}
             cd services/registry-service
-            /home/ubuntu/.local/bin/uv sync --locked
+            /home/ubuntu/.local/bin/uv sync --locked --no-dev
             sudo systemctl restart registry.service
             # restart returns before the app is up: wait up to 30 s for /health, else show the log and fail.
             for i in $(seq 1 30); do
