@@ -1,0 +1,54 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+# One deploy at a time: a second merge waits for the first deploy to finish.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy the AgroPilot stack
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DEPLOY_SHA: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: POSTGRES_PASSWORD,DEPLOY_SHA,REPO_URL
+          # The first run on a clean instance installs Docker, uv and Node and builds the frontend.
+          command_timeout: 30m
+          # Only enough to get this run's commit onto the instance; deploy/deploy.sh (from that same
+          # commit) does the rest, so re-running an old green run rolls back the whole stack.
+          script: |
+            set -e
+            command -v git >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq git; }
+            [ -d /home/ubuntu/ArgoPilot/.git ] || git clone "$REPO_URL" /home/ubuntu/ArgoPilot
+            cd /home/ubuntu/ArgoPilot
+            git fetch origin "$DEPLOY_SHA"
+            git reset --hard "$DEPLOY_SHA"
+            bash deploy/deploy.sh
+
+      # From outside AWS: the security group must let growers reach the frontend, and only the frontend.
+      - name: Check from the internet
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          curl -fsS -o /dev/null --max-time 15 "http://$HOST:3000/"
+          echo "frontend answers on port 3000"
+          for port in 5432 8000 8001 8002; do
+            code=0
+            curl -s -o /dev/null --max-time 5 "http://$HOST:$port/" || code=$?
+            case $code in
+              7|28) echo "port $port is closed to the internet" ;;
+              *) echo "port $port is reachable from the internet (curl exit $code)" >&2; exit 1 ;;
+            esac
+          done

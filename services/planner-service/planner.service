@@ -1,0 +1,14 @@
+[Unit]
+Description=AgroPilot planner-service
+After=network-online.target registry.service weather.service
+Wants=network-online.target registry.service weather.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ArgoPilot/services/planner-service
+ExecStart=/home/ubuntu/ArgoPilot/services/planner-service/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8002
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
