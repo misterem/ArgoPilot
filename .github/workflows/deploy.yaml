@@ -2,7 +2,7 @@ name: deploy
 
 on:
   push:
-    branches: [main, cd/deploy-full-stack]  # TEMP: deploy this branch before merging
+    branches: [main]
 
 # One deploy at a time: a second merge waits for the first deploy to finish.
 concurrency:
