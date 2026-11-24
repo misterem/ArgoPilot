@@ -1,0 +1,17 @@
+[Unit]
+Description=AgroPilot frontend
+After=network-online.target planner.service
+Wants=network-online.target planner.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ArgoPilot/services/frontend
+Environment=NODE_ENV=production
+Environment=PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin
+# The only public port: the grower's browser talks to this server, never to the services.
+ExecStart=/opt/node/bin/npm run start -- --hostname 0.0.0.0 --port 3000
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

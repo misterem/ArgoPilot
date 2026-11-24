@@ -1,0 +1,14 @@
+[Unit]
+Description=AgroPilot weather-service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ArgoPilot/services/weather-service
+ExecStart=/home/ubuntu/ArgoPilot/services/weather-service/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
