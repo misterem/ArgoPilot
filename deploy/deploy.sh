@@ -24,6 +24,7 @@ step() { echo; echo "==> $*"; }
 
 # ---------------------------------------------------------------------------------------------
 step "System packages"
+df -h / | tail -1 | awk '{print "Disk: " $4 " free of " $2}'
 missing=()
 command -v docker >/dev/null || missing+=(docker.io)
 command -v curl >/dev/null || missing+=(curl)
