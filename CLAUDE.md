@@ -11,6 +11,8 @@ AgroPilot helps growers manage crops. Services live under `services/`, each its 
 
 ## Commands
 
+Production (EC2, user `ubuntu`, repo at `/home/ubuntu/ArgoPilot`): every push to `main` runs `.github/workflows/deploy.yaml`, which SSHes in, resets the repo to the run's commit and runs `deploy/deploy.sh` (installs Docker/uv/Node if missing, PostgreSQL 16 in Docker, writes every `.env` from scratch, installs the `*.service` units committed next to each service, health-checks all four). It must stay safe on a clean instance and on a re-run. Actions secrets: `EC2_HOST`, `EC2_SSH_KEY`, `POSTGRES_PASSWORD`. Only the frontend (3000) listens publicly.
+
 Whole stack, from the repo root: `uv run start.py` (setup + all four services, Ctrl+C stops all; PyCharm run configuration "Start AgroPilot"). It never overwrites `.env` files and never creates tables in PostgreSQL. Per-service commands below.
 
 ### registry-service
