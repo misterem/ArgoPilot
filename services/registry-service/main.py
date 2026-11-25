@@ -11,6 +11,7 @@ except config.ConfigError as exc:
 
 import catalogue  # noqa: E402
 import farms  # noqa: E402
+import photos  # noqa: E402
 import plots  # noqa: E402
 import problems  # noqa: E402
 
@@ -18,6 +19,7 @@ app = FastAPI(title="AgroPilot registry-service", version="0.1.0")
 problems.install(app)
 app.include_router(farms.router)
 app.include_router(plots.router)
+app.include_router(photos.router)
 app.include_router(catalogue.router)
 
 

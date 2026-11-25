@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "AgroPilot registry service."
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.44.11",
     "fastapi~=0.165.0",
     "psycopg[binary]~=3.2",
     "pydantic>=2.14.2",
     "pydantic-settings~=2.6",
+    "python-multipart>=0.0.34",
     "sqlalchemy~=2.0",
     "uvicorn~=0.32.0",
 ]
@@ -29,7 +31,7 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["."]
-omit = ["tests/*"]
+omit = ["tests/*", "photos.py"]
 # Also measure the tests that start the service or a script in a child process.
 patch = ["subprocess"]
 

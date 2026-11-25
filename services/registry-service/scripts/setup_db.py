@@ -30,7 +30,7 @@ def main(url: str | None = None) -> int:
             print(f"Tables already exist: {', '.join(found)}. Nothing changed.", file=sys.stderr)
             return 1
         load(conn, "schema.sql", "catalogue.sql", "demo.sql")
-    print("Created 5 tables and loaded 15 rows: 2 crops, 3 soils, 4 emitters, 2 farms, 4 plots.")
+    print("Created 6 tables and loaded 15 rows: 2 crops, 3 soils, 4 emitters, 2 farms, 4 plots.")
     return 0
 
 

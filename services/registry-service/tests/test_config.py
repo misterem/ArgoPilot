@@ -65,7 +65,7 @@ def test_bare_postgres_url_gets_psycopg_driver():
 
 
 def test_statements_split_schema():
-    assert len(schema.statements("schema.sql")) == 5
+    assert len(schema.statements("schema.sql")) == 6
 
 
 class FakeOrig(Exception):

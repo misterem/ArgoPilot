@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = Field(min_length=1)
+    aws_s3_bucket: str = Field(min_length=1)
+    aws_region: str = Field(min_length=1)
 
 
 def load_settings(env_file: Path | None) -> Settings:

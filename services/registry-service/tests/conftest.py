@@ -9,6 +9,8 @@ from sqlalchemy import text
 # main.py refuses to import without DATABASE_URL. Overwrite (not setdefault) any shell value with a file
 # that never exists, so a test that forgets to set its own URL gets 503, never a real database.
 os.environ["DATABASE_URL"] = "sqlite:///__tests_must_set_DATABASE_URL__.db"
+os.environ["AWS_S3_BUCKET"] = "test-bucket"
+os.environ["AWS_REGION"] = "us-east-1"
 
 import config  # noqa: E402
 import db  # noqa: E402

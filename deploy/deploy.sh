@@ -89,6 +89,8 @@ pg_password_url=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(
 umask 077
 cat > "$SERVICES/registry-service/.env" <<EOF
 DATABASE_URL=postgresql://postgres:$pg_password_url@127.0.0.1:5432/$PG_DB
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=max-agropilot-photos
 EOF
 cat > "$SERVICES/weather-service/.env" <<'EOF'
 PROVIDER_BASE_URL=https://api.open-meteo.com
