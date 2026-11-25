@@ -103,6 +103,12 @@ class Plot(BaseModel):
     lon: float
 
 
+class PlotPhoto(BaseModel):
+    plot_id: str
+    key: str
+    content_type: str
+
+
 class Crop(BaseModel):
     id: str
     name: str

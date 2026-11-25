@@ -35,3 +35,9 @@ CREATE TABLE plots (
   lon                DOUBLE PRECISION NOT NULL,
   UNIQUE (farm_id, name)
 );
+
+CREATE TABLE plot_photos (
+  plot_id       TEXT PRIMARY KEY REFERENCES plots(id) ON DELETE CASCADE,
+  key           TEXT NOT NULL,
+  content_type  TEXT NOT NULL
+);

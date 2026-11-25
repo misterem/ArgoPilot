@@ -72,6 +72,7 @@ Target (NFR-1.1 / NFR-2.2): p95 ≤ 100 ms.
 | --- | --- |
 | Farms | `POST/GET /v1/farms`, `GET/PATCH/DELETE /v1/farms/{id}`, `GET /v1/farms/{id}/area` (total plot area, `{"area_m2": ...}`) |
 | Plots | `POST/GET /v1/plots` (`?farm_id=` filters), `GET/PATCH/DELETE /v1/plots/{id}` |
+| Plot photos | `POST /v1/plots/{id}/photo` (multipart field `file`: JPEG, PNG or WebP, at most 5 MB; `201` with `plot_id`, `key`, `content_type`), `GET /v1/plots/{id}/photo` (the image) |
 | Catalogues | `GET /v1/crops[/{id}]`, `GET /v1/soils[/{id}]`, `GET /v1/emitters[/{id}]` |
 
 `PATCH` changes only the fields you send. Catalogues are read-only, so any other method returns `405`.
@@ -80,11 +81,11 @@ Every error is `application/problem+json` (RFC 9457) with a `code`:
 
 | Status | `code` | When |
 | --- | --- | --- |
-| 422 | `VALIDATION` | Bad or missing field, unknown farm/crop/soil/emitter, malformed JSON |
+| 422 | `VALIDATION` | Bad or missing field, unknown farm/crop/soil/emitter, malformed JSON; photo empty, over 5 MB, or not JPEG/PNG/WebP |
 | 405 | `VALIDATION` | Writing to a catalogue route |
-| 404 | `NOT_FOUND` | Unknown id or route |
+| 404 | `NOT_FOUND` | Unknown id or route; plot has no photo |
 | 409 | `CONFLICT` | Duplicate plot name on one farm; deleting a farm that has plots |
-| 503 | `UNAVAILABLE` | Database missing, unreachable, or without tables (sends `Retry-After`) |
+| 503 | `UNAVAILABLE` | Database missing, unreachable, or without tables; S3 error, including missing credentials (sends `Retry-After`) |
 
 ## Code layout
 
